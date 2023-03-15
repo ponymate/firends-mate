@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ponymate.firendsmate.mapper.TeamMapper">
+
+    <resultMap id="BaseResultMap" type="com.ponymate.firendsmate.model.domain.Team">
+            <id property="id" column="id" jdbcType="BIGINT"/>
+            <result property="name" column="name" jdbcType="VARCHAR"/>
+            <result property="description" column="description" jdbcType="VARCHAR"/>
+            <result property="maxNum" column="maxNum" jdbcType="INTEGER"/>
+            <result property="expireTime" column="expireTime" jdbcType="TIMESTAMP"/>
+            <result property="userId" column="userId" jdbcType="BIGINT"/>
+            <result property="status" column="status" jdbcType="INTEGER"/>
+            <result property="password" column="password" jdbcType="VARCHAR"/>
+            <result property="createTime" column="createTime" jdbcType="TIMESTAMP"/>
+            <result property="updateTime" column="updateTime" jdbcType="TIMESTAMP"/>
+            <result property="isDelete" column="isDelete" jdbcType="TINYINT"/>
+    </resultMap>
+
+
+
+    <sql id="Base_Column_List">
+        id,name,description,
+        maxNum,expireTime,userId,
+        status,password,createTime,
+        updateTime,isDelete
+    </sql>
+
+<!--    <resultMap id="abc" type="com.ponymate.firendsmate.model.vo.TeamUserVO">
+        <id property="id" column="id" jdbcType="BIGINT"/>
+        <result property="name" column="name" jdbcType="VARCHAR"/>
+        <result property="description" column="description" jdbcType="VARCHAR"/>
+        <result property="maxNum" column="maxNum" jdbcType="INTEGER"/>
+        <result property="expireTime" column="expireTime" jdbcType="TIMESTAMP"/>
+        <result property="userId" column="userId" jdbcType="BIGINT"/>
+        <result property="status" column="status" jdbcType="INTEGER"/>
+        <result property="createTime" column="createTime" jdbcType="TIMESTAMP"/>
+        <result property="updateTime" column="updateTime" jdbcType="TIMESTAMP"/>
+        <association property="createUser" select="com.ponymate.firendsmate.mapper.UserMapper" javaType="com.ponymate.firendsmate.model.vo.UserVO">
+            <id property="id"  column="user.id" jdbcType="BIGINT"/>
+        </association>
+    </resultMap>-->
+
+    <select id="listTeamsBySql" resultType="com.ponymate.firendsmate.model.vo.TeamUserVO">
+        select team.id as id,team.name as name,team.description as description,team.maxNum as maxNum,
+               team.userId as userId ,team.status as status,team.createTime as createTime,
+               team.expireTime as expireTime,team.updateTime as updateTime,
+               concat(user.id,user.username,user.userAccount,user.avatarUrl,user.gender,user.phone,
+                   user.email,user.tags,user.userStatus,user.createTime,user.updateTime,user.userRole,user.planetCode) as createUser,
+               count(team.id) as hasJoinNum
+        from team left join user on team.userId = user.id left join user_team on team.id=user_team.teamId where 1=1
+            <if test="id!=null">
+                and team.id=#{id}
+            </if>
+            <if test="idList!=null">
+                and team.id in idList
+            </if><if test="searchText!=null">
+                and (team.description like concat('%',#{searchText},'%') or team.name like concat('%',#{searchText},'%'))
+            </if><if test="name!=null">
+                and team.name like concat('%',#{name},'%')
+            </if><if test="description!=null">
+                and team.description like concat('%',#{description},'%')
+            </if><if test="maxNum!=null">
+                and team.maxNum = #{maxNum}
+            </if><if test="userId!=null">
+                and team.userId=#{userId}
+            </if><if test="status==0">
+                and team.status = 0
+            </if><if test="status==1 and isAdmin==true">
+                and team.status =1
+            </if><if test="status==2">
+                and team.status =2
+            </if>
+            group by team.id;
+    </select>
+
+</mapper>

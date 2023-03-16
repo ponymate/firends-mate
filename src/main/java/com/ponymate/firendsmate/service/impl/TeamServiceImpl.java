@@ -244,6 +244,8 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
                 redisTemplate.multi();
                 // 将用户加入队伍
                 redisTemplate.opsForSet().add("team:"+teamId, userId);
+                //redisTemplate.watch("team:"+teamId);
+                Thread.sleep(5000);
                 // 获取队伍成员数量
                 long teamHasJoinNum = this.countTeamUserByTeamId(teamId);
                 ThrowUtils.throwIf(teamHasJoinNum >= team.getMaxNum(),new BusinessException(ErrorCode.PARAMS_ERROR, "队伍已满"));
@@ -255,19 +257,21 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
                 userTeamService.save(userTeam);
 
                 teamHasJoinNum = this.countTeamUserByTeamId(teamId);
-                ThrowUtils.throwIf(teamHasJoinNum >= team.getMaxNum(),new BusinessException(ErrorCode.PARAMS_ERROR, "队伍已满"));
+                ThrowUtils.throwIf(teamHasJoinNum > team.getMaxNum(),new BusinessException(ErrorCode.PARAMS_ERROR, "队伍已满"));
                 // 提交事务
                 List<Object> results = redisTemplate.exec();
 
                 return results!=null;
             }
-        } catch (InterruptedException e) {
+        } catch (Exception e) {
             log.error("doCacheRecommendUser error", e);
+            redisTemplate.discard();
             return false;
         } finally {
             // 只能释放自己的锁
             if (lock.isHeldByCurrentThread()) {
                 System.out.println("unLock: " + Thread.currentThread().getId());
+                //redisTemplate.unwatch();
                 lock.unlock();
             }
         }

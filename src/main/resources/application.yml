@@ -1,8 +1,8 @@
 spring:
   profiles:
-    active: dev
+    active: test
   application:
-    name: user-center-backend
+    name: firends-mate
   redis:
     database: 0
     host: 43.138.34.196

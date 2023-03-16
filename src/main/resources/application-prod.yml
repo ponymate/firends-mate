@@ -1,0 +1,10 @@
+spring:
+  # DataSource Config
+  datasource:
+    username: ponymate
+    password: "021103"
+    url: jdbc:mysql://localhost:3306/friends_mate?serverTimezone=UTC&userUnicode=true&characterEncoding=utf-8
+    driver-class-name: com.mysql.cj.jdbc.Driver
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: false

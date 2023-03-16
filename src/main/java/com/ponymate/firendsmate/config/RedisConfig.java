@@ -30,7 +30,8 @@ public class RedisConfig extends CachingConfigurerSupport {
     	//大多数情况，都是选用<String, Object>
         RedisTemplate<String, Object> template = new RedisTemplate<>();
         template.setConnectionFactory(redisConnectionFactory);
-
+        //开启事务
+        template.setEnableTransactionSupport(true);
         // 使用JSON的序列化对象，对数据key和value进行序列化转换
         Jackson2JsonRedisSerializer<Object> jackson2JsonRedisSerializer = new Jackson2JsonRedisSerializer<Object>(Object.class);
         //ObjectMapper是Jackson的一个工作类，顾名思义他的作用是将JSON映射到Java对象即反序列化，或将Java对象映射到JSON即序列化

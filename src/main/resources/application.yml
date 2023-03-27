@@ -5,7 +5,7 @@ spring:
     name: firends-mate
   redis:
     database: 0
-    host: 43.138.34.196
+    host:
     port: 6379
     password: Mjw20021103
   #swagger3

@@ -86,31 +86,33 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
             return -1;
         }
         // 账户不能重复
-        QueryWrapper<User> queryWrapper = new QueryWrapper<>();
-        queryWrapper.eq("userAccount", userAccount);
-        long count = userMapper.selectCount(queryWrapper);
-        if (count > 0) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "账号重复");
+        synchronized (userAccount.intern()) {
+            QueryWrapper<User> queryWrapper = new QueryWrapper<>();
+            queryWrapper.eq("userAccount", userAccount);
+            long count = userMapper.selectCount(queryWrapper);
+            if (count > 0) {
+                throw new BusinessException(ErrorCode.PARAMS_ERROR, "账号重复");
+            }
+            // 星球编号不能重复
+            queryWrapper = new QueryWrapper<>();
+            queryWrapper.eq("planetCode", planetCode);
+            count = userMapper.selectCount(queryWrapper);
+            if (count > 0) {
+                throw new BusinessException(ErrorCode.PARAMS_ERROR, "编号重复");
+            }
+            // 2. 加密
+            String encryptPassword = DigestUtils.md5DigestAsHex((SALT + userPassword).getBytes());
+            // 3. 插入数据
+            User user = new User();
+            user.setUserAccount(userAccount);
+            user.setUserPassword(encryptPassword);
+            user.setPlanetCode(planetCode);
+            boolean saveResult = this.save(user);
+            if (!saveResult) {
+                return -1;
+            }
+            return user.getId();
         }
-        // 星球编号不能重复
-        queryWrapper = new QueryWrapper<>();
-        queryWrapper.eq("planetCode", planetCode);
-        count = userMapper.selectCount(queryWrapper);
-        if (count > 0) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "编号重复");
-        }
-        // 2. 加密
-        String encryptPassword = DigestUtils.md5DigestAsHex((SALT + userPassword).getBytes());
-        // 3. 插入数据
-        User user = new User();
-        user.setUserAccount(userAccount);
-        user.setUserPassword(encryptPassword);
-        user.setPlanetCode(planetCode);
-        boolean saveResult = this.save(user);
-        if (!saveResult) {
-            return -1;
-        }
-        return user.getId();
     }
 
     @Override
@@ -178,9 +180,37 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         return (User) userObj;
     }
 
+    /**
+     * 更新用户数据
+     * @param userUpdateRequest
+     * @param loginUser
+     * @return
+     */
+    @Override
+    public int updateUser(UserUpdateRequest userUpdateRequest, User loginUser) {
+        long userId = userUpdateRequest.getId();
+        if (userId <= 0) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        // 如果是管理员，允许更新任意用户
+        // 如果不是管理员，只允许更新当前（自己的）信息
+        if (!isAdmin(loginUser) && userId != loginUser.getId()) {
+            throw new BusinessException(ErrorCode.NO_AUTH);
+        }
+        User oldUser = userMapper.selectById(userId);
+        if (oldUser == null) {
+            throw new BusinessException(ErrorCode.NULL_ERROR);
+        }
+        //todo 修改session中的数据
+
+        User user = new User();
+        BeanUtils.copyProperties(userUpdateRequest,user);
+        return userMapper.updateById(user);
+    }
+
 
     /**
-     *  根据tags查询用户
+     * 根据tags查询用户
      * @param tags
      * @return
      */
@@ -208,7 +238,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         List<User> redisUserList = (List<User>) redisTemplate.opsForValue().get("recommend");
         if (redisUserList != null) {
             // 将 list 转换为 page
-            userPage.setRecords(redisUserList);
+            userPage.setRecords(redisUserList.stream().map(this::getSafetyUser).collect(Collectors.toList()));
             userPage.setTotal(redisUserList.size());
 
             return userPage;
@@ -225,28 +255,13 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         return this.page(userPage, wrapper);
     }
 
+    /**
+     * 匹配相似的用户
+     * @param loginUser
+     * @return
+     */
     @Override
-    public int updateUser(UserUpdateRequest userUpdateRequest, User loginUser) {
-        long userId = userUpdateRequest.getId();
-        if (userId <= 0) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR);
-        }
-        // 如果是管理员，允许更新任意用户
-        // 如果不是管理员，只允许更新当前（自己的）信息
-        if (!isAdmin(loginUser) && userId != loginUser.getId()) {
-            throw new BusinessException(ErrorCode.NO_AUTH);
-        }
-        User oldUser = userMapper.selectById(userId);
-        if (oldUser == null) {
-            throw new BusinessException(ErrorCode.NULL_ERROR);
-        }
-        User user = new User();
-        BeanUtils.copyProperties(userUpdateRequest,user);
-        return userMapper.updateById(user);
-    }
-
-    @Override
-    public List<User> matchUsers(long num, User loginUser) {
+    public List<User> matchUsers(User loginUser) {
         //获取自己的标签
         String tags = loginUser.getTags();
         ThrowUtils.throwIf(tags==null,new BusinessException(ErrorCode.SYSTEM_ERROR,"无法为您推荐"));
@@ -277,9 +292,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         // 按编辑距离由小到大排序
         List<Pair<User, Long>> topUserPairList = list.stream()
                 .sorted((a, b) -> (int) (a.getValue() - b.getValue()))
-                .limit(num)
+                .limit(10)
                 .collect(Collectors.toList());
-        // 原本顺序的 userId 列表
+
+        // 按照相似度排序后的 userId 列表
         List<Long> userIdList = topUserPairList.stream().map(pair -> pair.getKey().getId()).collect(Collectors.toList());
         QueryWrapper<User> userQueryWrapper = new QueryWrapper<>();
         userQueryWrapper.in("id", userIdList);

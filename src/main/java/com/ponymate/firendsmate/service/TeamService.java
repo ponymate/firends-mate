@@ -40,5 +40,5 @@ public interface TeamService extends IService<Team> {
     boolean deleteTeam(long id, User loginUser);
 
 
-    List<TeamUserVO> setHasJoinOfTeamUserVO(List<TeamUserVO> records,User loginUser);
+    List<TeamUserVO> setHasJoin(List<TeamUserVO> records,User loginUser);
 }

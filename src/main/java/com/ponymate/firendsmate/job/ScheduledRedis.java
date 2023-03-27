@@ -33,9 +33,12 @@ public class ScheduledRedis {
     RedisTemplate<String,Object> redisTemplate;
 
 
+    /**
+     * 定时任务，每天5点刷新数据
+     */
     @Scheduled(cron="0 0 5 * * *")
     public void cacheRecommendUsers() {
-        RLock lock = redissonClient.getLock("preWork_recommend");
+        RLock lock = redissonClient.getLock("preheat:recommend");
         try {
             boolean isGetLock = lock.tryLock(0L, 30L, TimeUnit.SECONDS);
             if(!isGetLock){

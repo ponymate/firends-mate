@@ -118,9 +118,9 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
 
         List<TeamUserVO> teamUserVOS = teamMapper.listTeamsBySql(id, idList, searchText, name, description, maxNum, userId, status, isAdmin);
 
+        //添加队伍创建人的详细信息
         teamUserVOS.forEach(teamUserVO -> {
-            Long userId1 = teamUserVO.getUserId();
-            User byId = userService.getById(userId1);
+            User byId = userService.getById(teamUserVO.getUserId());
             UserVO userVO = new UserVO();
             BeanUtils.copyProperties(byId,userVO);
             teamUserVO.setCreateUser(userVO);
@@ -167,8 +167,7 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
         for (Team team :records) {
             TeamUserVO teamUserVO = new TeamUserVO();
             BeanUtils.copyProperties(team,teamUserVO);
-            Long userId1 = team.getUserId();
-            User byId = userService.getById(userId1);
+            User byId = userService.getById(team.getUserId());
             UserVO userVO = new UserVO();
             BeanUtils.copyProperties(byId,userVO);
             teamUserVO.setCreateUser(userVO);
@@ -201,6 +200,12 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
         return this.updateById(updateTeam);
     }
 
+    /**
+     * 加入队伍
+     * @param teamJoinRequest
+     * @param loginUser
+     * @return
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean joinTeam(TeamJoinRequest teamJoinRequest, User loginUser) {
@@ -222,7 +227,7 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
 
         long userId = loginUser.getId();
 
-        // 只有一个线程能获取到锁
+        // 只有一个线程能获取到锁（锁的粒度为同一用户，同一队伍）
         RLock lock = redissonClient.getLock("team:"+teamId+":user:"+userId);
         try {
             // 抢到锁并执行
@@ -240,14 +245,13 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
                 long hasJoinTeam = userTeamService.count(wrapper);
                 ThrowUtils.throwIf(hasJoinTeam > 0,new BusinessException(ErrorCode.PARAMS_ERROR, "用户已加入该队伍"));
                 System.out.println("getLock: " + Thread.currentThread().getId());
-                // 开始事务
+                // 开始事务（粒度为队伍，防止队伍人数超过需要的人数）
                 redisTemplate.multi();
                 // 将用户加入队伍
                 redisTemplate.opsForSet().add("team:"+teamId, userId);
                 //redisTemplate.watch("team:"+teamId);
-                Thread.sleep(5000);
                 // 获取队伍成员数量
-                long teamHasJoinNum = this.countTeamUserByTeamId(teamId);
+                long teamHasJoinNum = this.countUsersInTeam(teamId);
                 ThrowUtils.throwIf(teamHasJoinNum >= team.getMaxNum(),new BusinessException(ErrorCode.PARAMS_ERROR, "队伍已满"));
                 // 修改队伍信息
                 UserTeam userTeam = new UserTeam();
@@ -256,7 +260,7 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
                 userTeam.setJoinTime(new Date());
                 userTeamService.save(userTeam);
 
-                teamHasJoinNum = this.countTeamUserByTeamId(teamId);
+                teamHasJoinNum = this.countUsersInTeam(teamId);
                 ThrowUtils.throwIf(teamHasJoinNum > team.getMaxNum(),new BusinessException(ErrorCode.PARAMS_ERROR, "队伍已满"));
                 // 提交事务
                 List<Object> results = redisTemplate.exec();
@@ -278,6 +282,12 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
         return false;
     }
 
+    /**
+     * 退出队伍
+     * @param teamQuitRequest
+     * @param loginUser
+     * @return
+     */
     @Override
     @Transactional
     public boolean quitTeam(TeamQuitRequest teamQuitRequest, User loginUser) {
@@ -293,7 +303,7 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
         if (count == 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "未加入队伍");
         }
-        long teamHasJoinNum = this.countTeamUserByTeamId(teamId);
+        long teamHasJoinNum = this.countUsersInTeam(teamId);
         // 队伍只剩一人，解散
         if (teamHasJoinNum == 1) {
             // 删除队伍
@@ -311,6 +321,7 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
                 if (CollectionUtils.isEmpty(userTeamList) || userTeamList.size() <= 1) {
                     throw new BusinessException(ErrorCode.SYSTEM_ERROR);
                 }
+                //获取id顺序在第二的用户，第一个是当前的队长
                 UserTeam nextUserTeam = userTeamList.get(1);
                 Long nextTeamLeaderId = nextUserTeam.getUserId();
                 // 更新当前队伍的队长
@@ -380,7 +391,7 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
      * @param teamId
      * @return
      */
-    private long countTeamUserByTeamId(long teamId) {
+    private long countUsersInTeam(long teamId) {
         QueryWrapper<UserTeam> userTeamQueryWrapper = new QueryWrapper<>();
         userTeamQueryWrapper.eq("teamId", teamId);
         return userTeamService.count(userTeamQueryWrapper);
@@ -392,7 +403,7 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
      * @return
      */
     @Override
-    public List<TeamUserVO> setHasJoinOfTeamUserVO(List<TeamUserVO> records,User loginUser) {
+    public List<TeamUserVO> setHasJoin(List<TeamUserVO> records,User loginUser) {
         //符合条件的team的id列表
         final List<Long> teamIdList = records.stream().map(TeamUserVO::getId).collect(Collectors.toList());
         // 2、判断当前用户是否已加入队伍

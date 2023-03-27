@@ -2,10 +2,7 @@ package com.ponymate.firendsmate.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.ponymate.firendsmate.common.BaseResponse;
-import com.ponymate.firendsmate.common.DeleteRequest;
-import com.ponymate.firendsmate.common.ErrorCode;
-import com.ponymate.firendsmate.common.ResultUtils;
+import com.ponymate.firendsmate.common.*;
 import com.ponymate.firendsmate.exception.BusinessException;
 import com.ponymate.firendsmate.exception.ThrowUtils;
 import com.ponymate.firendsmate.model.domain.User;
@@ -53,7 +50,7 @@ public class UserController {
         String checkPassword = userRegisterRequest.getCheckPassword();
         String planetCode = userRegisterRequest.getPlanetCode();
         if (StringUtils.isAnyBlank(userAccount, userPassword, checkPassword, planetCode)) {
-            return null;
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "参数为空");
         }
         long result = userService.userRegister(userAccount, userPassword, checkPassword, planetCode);
         return ResultUtils.success(result);
@@ -115,6 +112,41 @@ public class UserController {
     }
 
     /**
+     * 更新用户信息
+     * @param user
+     * @param request
+     * @return
+     */
+    @PostMapping("/update")
+    public BaseResponse<Integer> updateUser(@RequestBody UserUpdateRequest user, HttpServletRequest request) {
+        // 校验参数是否为空
+        User loginUser = userService.getLoginUser(request);
+        if (user == null||userService.getLoginUser(request)==null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        int result = userService.updateUser(user, loginUser);
+        return ResultUtils.success(result);
+    }
+
+    /**
+     * 删除用户
+     *
+     * @param request
+     * @return
+     */
+    @PostMapping("/delete")
+    public BaseResponse<Boolean> deleteUser(@RequestBody DeleteRequest deleteRequest, HttpServletRequest request) {
+        if (!userService.isAdmin(request)) {
+            throw new BusinessException(ErrorCode.NO_AUTH);
+        }
+        if (deleteRequest.getId() <= 0) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        boolean result = userService.removeById(deleteRequest.getId());
+        return ResultUtils.success(result);
+    }
+
+    /**
      * 根据username查询用户
      *
      * @param username
@@ -150,34 +182,16 @@ public class UserController {
 
 
     /**
-     * 更新用户信息
-     * @param user
-     * @param request
-     * @return
-     */
-    @PostMapping("/update")
-    public BaseResponse<Integer> updateUser(@RequestBody UserUpdateRequest user, HttpServletRequest request) {
-        // 校验参数是否为空
-        User loginUser = userService.getLoginUser(request);
-        if (user == null||userService.getLoginUser(request)==null) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR);
-        }
-        int result = userService.updateUser(user, loginUser);
-        return ResultUtils.success(result);
-    }
-
-
-    /**
      * 首页推荐（列举用户）
      *
-     * @param pageNum
-     * @param pageSize
      * @param request
      * @return
      */
     @GetMapping("/recommend")
-    public BaseResponse<Page<User>> recommendUsers(@RequestParam Integer pageNum, @RequestParam Integer pageSize, HttpServletRequest request) {
-        ThrowUtils.throwIf(pageNum == null || pageSize == null, new BusinessException(ErrorCode.PARAMS_ERROR));
+    public BaseResponse<Page<User>> recommendUsers(PageRequest pageRequest, HttpServletRequest request) {
+        Integer pageNum = pageRequest.getPageNum();
+        Integer pageSize = pageRequest.getPageSize();
+        ThrowUtils.throwIf(pageNum==null||pageSize==null, new BusinessException(ErrorCode.PARAMS_ERROR));
         Page<User> userPage = new Page<>(pageNum, pageSize);
         userPage = userService.recommendUsers(userPage, request);
 
@@ -185,36 +199,15 @@ public class UserController {
     }
 
     /**
-     * 删除用户
-     *
-     * @param request
-     * @return
-     */
-    @PostMapping("/delete")
-    public BaseResponse<Boolean> deleteUser(@RequestBody DeleteRequest deleteRequest, HttpServletRequest request) {
-        if (!userService.isAdmin(request)) {
-            throw new BusinessException(ErrorCode.NO_AUTH);
-        }
-        if (deleteRequest.getId() <= 0) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR);
-        }
-        boolean result = userService.removeById(deleteRequest.getId());
-        return ResultUtils.success(result);
-    }
-
-    /**
      * 获取最匹配的用户
      *
-     * @param num
      * @param request
      * @return
      */
     @GetMapping("/match")
-    public BaseResponse<List<User>> matchUsers(long num, HttpServletRequest request) {
-        if (num <= 0 || num > 20) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR);
-        }
+    public BaseResponse<List<User>> matchUsers(HttpServletRequest request) {
         User user = userService.getLoginUser(request);
-        return ResultUtils.success(userService.matchUsers(num, user));
+        ThrowUtils.throwIf(user==null,new BusinessException(ErrorCode.NO_AUTH));
+        return ResultUtils.success(userService.matchUsers(user));
     }
 }

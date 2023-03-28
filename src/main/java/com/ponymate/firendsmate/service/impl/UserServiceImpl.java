@@ -216,7 +216,20 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
      */
     @Override
     public List<User> searchUserByTags(List<String> tags){
-        List<User> users = this.list();
+        List<User> users = (List<User>) redisTemplate.opsForValue().get("recommend");
+        if (users == null) {
+            // 异步执行的代码块
+            Runnable runnable = new Runnable() {
+                public void run() {
+                    // 这里是异步执行的业务逻辑
+                    System.out.println("redis go");
+                    scheduledRedis.cacheRecommendUsers();
+                }
+            };
+            // 创建新的线程并执行异步代码
+            new Thread(runnable).start();
+            users = this.list();
+        }
         return users.stream().filter(user -> {
             String userTags = user.getTags();
             Gson gson = new Gson();
@@ -228,7 +241,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
                     return false;
             }
             return true;
-        }).collect(Collectors.toList());
+        }).map(this::getSafetyUser).collect(Collectors.toList());
     }
 
     @Override
@@ -238,7 +251,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         List<User> redisUserList = (List<User>) redisTemplate.opsForValue().get("recommend");
         if (redisUserList != null) {
             // 将 list 转换为 page
-            userPage.setRecords(redisUserList.stream().map(this::getSafetyUser).collect(Collectors.toList()));
+            int size = Integer.parseInt(String.valueOf(userPage.getSize()));
+            int pages = Integer.parseInt(String.valueOf(userPage.getCurrent()));
+            List<User> userList = redisUserList.subList(size * pages, size * pages+size).stream().map(this::getSafetyUser).collect(Collectors.toList());
+            userPage.setRecords(userList);
             userPage.setTotal(redisUserList.size());
 
             return userPage;
@@ -256,6 +272,54 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     }
 
     /**
+     * 使用缓存和优先队列进行匹配
+     * @param loginUser
+     * @return
+     */
+    @Override
+    public List<User> matchUsersByCache(User loginUser) {
+        //获取所有用户
+        List<User> userList = (List<User>) redisTemplate.opsForValue().get("recommend");
+        if (userList == null) {
+            // 异步执行的代码块
+            Runnable runnable = new Runnable () {
+                public void run() {
+                    // 这里是异步执行的业务逻辑
+                    System.out.println("redis go");
+                    scheduledRedis.cacheRecommendUsers();
+                }
+            };
+            // 创建新的线程并执行异步代码
+            new Thread(runnable).start();
+            return matchUsers(loginUser);
+        }
+        else {//获取自己的标签
+            List<String> myTags = this.getUserTags(loginUser);
+            // 创建 PriorityQueue 并传入比较器
+            PriorityQueue<Pair<User, Long>> pq = new PriorityQueue<>(new Comparator<Pair<User, Long>>() {
+                @Override
+                public int compare(Pair<User, Long> p1, Pair<User, Long> p2) {
+                    return p1.getValue().compareTo(p2.getValue());
+                }
+            });
+            // 依次计算所有用户和当前用户的相似度
+            for (User user : userList) {
+                // 无标签或者为当前用户自己
+                if (StringUtils.isBlank(user.getTags()) || Objects.equals(user.getId(), loginUser.getId())) {
+                    continue;
+                }
+                List<String> userTagList = this.getUserTags(user);
+                // 计算分数
+                long distance = AlgorithmUtils.minDistance(myTags, userTagList);
+                pq.add(new MutablePair<>(user, distance));
+            }
+
+            // 按照相似度排序后的 userId 列表
+            return pq.stream().map(pair -> this.getSafetyUser(pair.getKey())).limit(10).collect(Collectors.toList());
+        }
+    }
+
+    /**
      * 匹配相似的用户
      * @param loginUser
      * @return
@@ -263,11 +327,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     @Override
     public List<User> matchUsers(User loginUser) {
         //获取自己的标签
-        String tags = loginUser.getTags();
-        ThrowUtils.throwIf(tags==null,new BusinessException(ErrorCode.SYSTEM_ERROR,"无法为您推荐"));
-        Gson gson = new Gson();
-        List<String> myTags = gson.fromJson(tags, new TypeToken<List<String>>() {
-        }.getType());
+        List<String> myTags = this.getUserTags(loginUser);
         //获取所有用户
         QueryWrapper<User> queryWrapper = new QueryWrapper<>();
         queryWrapper.select("id", "tags");
@@ -278,13 +338,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         List<Pair<User, Long>> list = new ArrayList<>();
         // 依次计算所有用户和当前用户的相似度
         for (User user : userList) {
-            String userTags = user.getTags();
-            // 无标签或者为当前用户自己
-            if (StringUtils.isBlank(userTags) || Objects.equals(user.getId(), loginUser.getId())) {
+            if (StringUtils.isBlank(user.getTags()) || Objects.equals(user.getId(), loginUser.getId())) {
                 continue;
             }
-            List<String> userTagList = gson.fromJson(userTags, new TypeToken<List<String>>() {
-            }.getType());
+            List<String> userTagList = this.getUserTags(user);
             // 计算分数
             long distance = AlgorithmUtils.minDistance(myTags, userTagList);
             list.add(new MutablePair<>(user, distance));
@@ -313,6 +370,13 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         return finalUserList;
     }
 
+    public List<String> getUserTags(User user){
+        String tags = user.getTags();
+        ThrowUtils.throwIf(tags==null,new BusinessException(ErrorCode.SYSTEM_ERROR,"无法为您推荐"));
+        Gson gson = new Gson();
+        return gson.fromJson(tags, new TypeToken<List<String>>() {
+        }.getType());
+    }
 
     /**
      * 是否为管理员

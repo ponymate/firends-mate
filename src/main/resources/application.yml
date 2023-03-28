@@ -5,9 +5,9 @@ spring:
     name: firends-mate
   redis:
     database: 0
-    host:
+    host: localhost
     port: 6379
-    password: Mjw20021103
+    #password: Mjw20021103
   #swagger3
   mvc:
     pathmatch:

@@ -66,6 +66,8 @@ public interface UserService extends IService<User> {
 
     int updateUser(UserUpdateRequest user, User loginUser);
 
+    List<User> matchUsersByCache(User loginUser);
+
     List<User> matchUsers(User user);
 
 }

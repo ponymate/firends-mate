@@ -208,6 +208,6 @@ public class UserController {
     public BaseResponse<List<User>> matchUsers(HttpServletRequest request) {
         User user = userService.getLoginUser(request);
         ThrowUtils.throwIf(user==null,new BusinessException(ErrorCode.NO_AUTH));
-        return ResultUtils.success(userService.matchUsers(user));
+        return ResultUtils.success(userService.matchUsersByCache(user));
     }
 }

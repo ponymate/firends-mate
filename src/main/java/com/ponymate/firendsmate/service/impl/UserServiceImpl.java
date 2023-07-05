@@ -7,13 +7,17 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import com.ponymate.firendsmate.common.ErrorCode;
+import com.ponymate.firendsmate.config.MyThreadPoolExecutor;
 import com.ponymate.firendsmate.contant.UserConstant;
+import com.ponymate.firendsmate.dao.TeamEsDao;
 import com.ponymate.firendsmate.exception.BusinessException;
 import com.ponymate.firendsmate.exception.ThrowUtils;
 import com.ponymate.firendsmate.job.ScheduledRedis;
 import com.ponymate.firendsmate.mapper.UserMapper;
 import com.ponymate.firendsmate.model.domain.User;
+import com.ponymate.firendsmate.model.dto.SearchRequest;
 import com.ponymate.firendsmate.model.dto.User.UserUpdateRequest;
+import com.ponymate.firendsmate.model.vo.UserVO;
 import com.ponymate.firendsmate.service.UserService;
 import com.ponymate.firendsmate.utils.AlgorithmUtils;
 import lombok.extern.slf4j.Slf4j;
@@ -21,6 +25,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.MutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.springframework.beans.BeanUtils;
+import org.springframework.data.elasticsearch.core.ElasticsearchRestTemplate;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
@@ -29,6 +34,7 @@ import org.springframework.util.DigestUtils;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -54,6 +60,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
 
     @Resource
     private RedisTemplate<String,Object> redisTemplate;
+
+    @Resource
+    TeamEsDao teamEsDao;
+
+    @Resource
+    private ElasticsearchRestTemplate elasticsearchRestTemplate;
 
     /**
      * 盐值，混淆密码
@@ -218,17 +230,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     public List<User> searchUserByTags(List<String> tags){
         List<User> users = (List<User>) redisTemplate.opsForValue().get("recommend");
         if (users == null) {
-            // 异步执行的代码块
-            Runnable runnable = new Runnable() {
-                public void run() {
-                    // 这里是异步执行的业务逻辑
-                    System.out.println("redis go");
-                    scheduledRedis.cacheRecommendUsers();
-                }
-            };
-            // 创建新的线程并执行异步代码
-            new Thread(runnable).start();
             users = this.list();
+            redisTemplate.opsForValue().set("recommend",users , 1 , TimeUnit.HOURS);
         }
         return users.stream().filter(user -> {
             String userTags = user.getTags();
@@ -260,14 +263,13 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
             return userPage;
         }
         // 异步执行的代码块
-        Runnable runnable = new Runnable () {
+        MyThreadPoolExecutor.EXECUTOR.execute(new Runnable() {
+            @Override
             public void run() {
-                // 这里是异步执行的业务逻辑
                 scheduledRedis.cacheRecommendUsers();
             }
-        };
+        });
         // 创建新的线程并执行异步代码
-        new Thread(runnable).start();
         return this.page(userPage, wrapper);
     }
 
@@ -282,15 +284,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         List<User> userList = (List<User>) redisTemplate.opsForValue().get("recommend");
         if (userList == null) {
             // 异步执行的代码块
-            Runnable runnable = new Runnable () {
+            MyThreadPoolExecutor.EXECUTOR.execute(new Runnable() {
+                @Override
                 public void run() {
-                    // 这里是异步执行的业务逻辑
-                    System.out.println("redis go");
                     scheduledRedis.cacheRecommendUsers();
                 }
-            };
-            // 创建新的线程并执行异步代码
-            new Thread(runnable).start();
+            });
             return matchUsers(loginUser);
         }
         else {//获取自己的标签
@@ -442,6 +441,11 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
 
         List<User> users = userMapper.selectList(wrapper);
         return users.stream().map(this::getSafetyUser).collect(Collectors.toList());
+    }
+
+    @Override
+    public Page<UserVO> doSearch(SearchRequest searchRequest, HttpServletRequest request) {
+        return null;
     }
 }
 

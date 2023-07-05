@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.ponymate.firendsmate.model.domain.User;
 import com.ponymate.firendsmate.model.dto.User.UserUpdateRequest;
+import com.ponymate.firendsmate.model.vo.UserVO;
 
 import javax.servlet.http.HttpServletRequest;
 import java.util.List;
@@ -13,7 +14,7 @@ import java.util.List;
  *
  * @author ponymate
  */
-public interface UserService extends IService<User> {
+public interface UserService extends IService<User>, SearchService<UserVO> {
 
     /**
      * 用户注册

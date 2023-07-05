@@ -75,4 +75,10 @@
             group by team.id;
     </select>
 
+    <select id="listTeamWithDelete" resultType="com.ponymate.firendsmate.model.domain.Team">
+        select *
+        from team
+        where updateTime >= #{minUpdateTime}
+    </select>
+
 </mapper>

@@ -30,5 +30,11 @@
         userRole,planetCode,tags
     </sql>
 
+    <select id="listUserWithDelete" resultType="com.ponymate.firendsmate.model.domain.User">
+        select *
+        from user
+        where updateTime >= #{minUpdateTime}
+    </select>
+
 
 </mapper>

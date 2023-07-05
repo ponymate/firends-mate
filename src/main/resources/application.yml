@@ -9,6 +9,10 @@ spring:
     port: 6379
     #password: Mjw20021103
   #swagger3
+  elasticsearch:
+    uris: http://localhost:9200
+    username: root
+    #password: 123456
   mvc:
     pathmatch:
       matching-strategy: ant_path_matcher

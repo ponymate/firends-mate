@@ -11,6 +11,7 @@ import java.util.Date;
 
 /**
  * 用户
+ * @author ponymate
  * @TableName user
  */
 @TableName(value ="user")

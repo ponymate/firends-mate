@@ -95,7 +95,7 @@ public class TeamController {
     }
 
     /**
-     * 分页查询所有符合条件的队伍（通过wrapper）
+     * 分页查询所有符合条件的队伍（通过wrapper+内存）
      * @param teamQuery
      * @return
      */

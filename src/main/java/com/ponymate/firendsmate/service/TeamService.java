@@ -19,7 +19,7 @@ import java.util.List;
 * @description 针对表【team(队伍)】的数据库操作Service
 * @createDate 2023-03-13 20:15:26
 */
-public interface TeamService extends IService<Team> {
+public interface TeamService extends IService<Team> ,SearchService<TeamUserVO>{
 
     Long addTeam(Team team, User loginUser);
 
